@@ -38,6 +38,26 @@ public class AuthAction extends ActionBase {
      * @throws ServletException
      * @throws IOException
      */
+    public void showLogin() throws ServletException, IOException {
+
+        //CSRF対策用トークンを設定
+        putRequestScope(AttributeConst.TOKEN, getTokenId());
+
+        //セッションにフラッシュメッセージが登録されている場合はリクエストスコープに設定する
+        String flush = getSessionScope(AttributeConst.FLUSH);
+        if (flush != null) {
+            putRequestScope(AttributeConst.FLUSH,flush);
+            removeSessionScope(AttributeConst.FLUSH);
+        }
+
+        //ログイン画面を表示
+        forward(ForwardConst.FW_LOGIN);
+    }
+    /**
+     * ログイン処理を行う
+     * @throws ServletException
+     * @throws IOException
+     */
     public void login() throws ServletException, IOException {
 
         String code = getRequestParam(AttributeConst.EMP_CODE);
