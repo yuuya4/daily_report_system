@@ -4,14 +4,17 @@ import java.io.IOException;
 import java.time.LocalDate;
 import java.util.List;
 
+import javax.servlet.RequestDispatcher;
 import javax.servlet.ServletException;
 
 import actions.views.EmployeeView;
+import actions.views.LikeView;
 import actions.views.ReportView;
 import constants.AttributeConst;
 import constants.ForwardConst;
 import constants.JpaConst;
 import constants.MessageConst;
+import services.LikeService;
 import services.ReportService;
 
 /**
@@ -21,6 +24,7 @@ import services.ReportService;
 public class ReportAction extends ActionBase {
 
     private ReportService service;
+    private LikeService likeService;
 
     /**
      * メソッドを実行する
@@ -29,10 +33,12 @@ public class ReportAction extends ActionBase {
     public void process() throws ServletException, IOException {
 
         service = new ReportService();
+        likeService = new LikeService();
 
         //メソッドを実行
         invoke();
         service.close();
+        likeService.close();
     }
 
     /**
@@ -145,22 +151,23 @@ public class ReportAction extends ActionBase {
      * @throws IOException
      */
     public void show() throws ServletException, IOException {
-
-        //idを条件に日報データを取得する
+      //idを条件に日報データを取得する
         ReportView rv = service.findOne(toNumber(getRequestParam(AttributeConst.REP_ID)));
-
+        EmployeeView ev = (EmployeeView) getSessionScope(AttributeConst.LOGIN_EMP);
+        long likesCount = likeService.countAllMine(rv,ev);
         if (rv == null) {
             //該当の日報データが存在しない場合はエラー画面を表示
             forward(ForwardConst.FW_ERR_UNKNOWN);
 
         } else {
 
+            request.setAttribute("likes", likesCount);
             putRequestScope(AttributeConst.REPORT, rv); //取得した日報データ
-
-            //詳細画面を表示
+          //詳細画面を表示
             forward(ForwardConst.FW_REP_SHOW);
         }
     }
+
     /**
      * 編集画面を表示する
      * @throws ServletException
@@ -235,32 +242,61 @@ public class ReportAction extends ActionBase {
 
         public void likes() throws ServletException, IOException {
 
-            putRequestScope(AttributeConst.TOKEN, getTokenId()); //CSRF対策用トークン
             ReportView rv = service.findOne(toNumber(getRequestParam(AttributeConst.REP_ID)));
+            EmployeeView ev = (EmployeeView) getSessionScope(AttributeConst.LOGIN_EMP);
 
-            int like = rv.getLikesCount();
-            like++;
-            rv.setLikesCount(like);
+                int like = rv.getLikesCount();
+                like++;
+                rv.setLikesCount(like);
+                service.update(rv);
 
-          //日報データを更新する
-            List<String> errors = service.update(rv);
+                LikeView lv = new LikeView(
+                        null,
+                        ev,
+                        rv,
+                        null,
+                        null);
 
-            if (errors.size() > 0) {
-                //更新中にエラーが発生した場合
+                likeService.create(lv);
 
-                putRequestScope(AttributeConst.TOKEN, getTokenId()); //CSRF対策用トークン
-                putRequestScope(AttributeConst.REPORT, rv); //入力された日報情報
-                putRequestScope(AttributeConst.ERR, errors); //エラーのリスト
 
-                //編集画面を再表示
-                forward(ForwardConst.FW_REP_SHOW);
-            } else {
+                    //詳細画面を表示
+                    putSessionScope(AttributeConst.FLUSH, MessageConst.I_LIKES.getMessage());
 
-                //詳細画面を表示
-                putSessionScope(AttributeConst.FLUSH, MessageConst.I_LIKES.getMessage());
+                    //一覧画面にリダイレクト
+                    redirect(ForwardConst.ACT_REP, ForwardConst.CMD_INDEX);
 
-                //一覧画面にリダイレクト
-                redirect(ForwardConst.ACT_REP, ForwardConst.CMD_INDEX);
-        }}}
+
+
+        }
+
+        public void likeIndex() throws ServletException, IOException {
+
+
+            ReportView rv = service.findOne(toNumber(getRequestParam(AttributeConst.REP_ID)));
+            int ID = toNumber(getRequestParam(AttributeConst.REP_ID));
+            //指定されたページ数の一覧画面に表示する日報データを取得
+              int page = getPage();
+              List<LikeView> likes = likeService.getMinePerPage(rv,page);
+
+              //全日報データの件数を取得
+              long likesCount = likeService.countAllMinn(rv);
+
+              request.setAttribute("likes", likes); //取得した日報データ
+              request.setAttribute("like_Count", likesCount); //全ての日報データの件数
+              request.setAttribute("ID", ID);
+              putRequestScope(AttributeConst.PAGE, page); //ページ数
+              putRequestScope(AttributeConst.MAX_ROW, JpaConst.ROW_PER_PAGE); //1ページに表示するレコードの数
+
+              RequestDispatcher dispatcher = request.getRequestDispatcher("/WEB-INF/views/reports/likes.jsp");
+
+              //jspファイルの呼び出し
+              dispatcher.forward(request, response);
+        }}
+
+
+
+
+
 
 
